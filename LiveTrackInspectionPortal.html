@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Track Inspection Portal</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #080c14;
+  --surface: #0d1520;
+  --surface2: #111e30;
+  --border: #1a2f4a;
+  --accent: #00c3ff;
+  --accent2: #0072ff;
+  --green: #00e676;
+  --red: #ff3d5a;
+  --yellow: #ffd740;
+  --text: #cce6ff;
+  --dim: #5a7a99;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: 'Exo 2', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+
+/* ── TOPBAR ── */
+.topbar {
+  height: 54px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 18px;
+  gap: 14px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  flex-shrink: 0;
+}
+
+.hamburger {
+  width: 38px; height: 38px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  flex-shrink: 0;
+  transition: border-color .2s;
+}
+.hamburger:hover { border-color: var(--accent); }
+.hamburger span {
+  display: block;
+  width: 18px; height: 2px;
+  background: var(--text);
+  border-radius: 2px;
+  transition: all .25s;
+}
+.hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.hamburger.open span:nth-child(2) { opacity: 0; transform: scaleX(0); }
+.hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+.topbar-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: white;
+  flex: 1;
+}
+.topbar-sub {
+  font-size: 11px;
+  color: var(--dim);
+  font-family: 'Share Tech Mono', monospace;
+}
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--dim);
+}
+#activeMachineLabel {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 12px;
+  color: var(--accent);
+  display: none;
+}
+#clockEl { font-family: 'Share Tech Mono', monospace; font-size: 11px; }
+
+/* ── DRAWER ── */
+.overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.55);
+  z-index: 200;
+}
+.overlay.open { display: block; }
+
+.drawer {
+  position: fixed;
+  top: 0; left: 0;
+  width: 260px;
+  height: 100vh;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(-100%);
+  transition: transform .28s cubic-bezier(.4,0,.2,1);
+}
+.drawer.open { transform: translateX(0); }
+
+.drawer-header {
+  padding: 20px 18px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.drawer-tag {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: var(--accent);
+  letter-spacing: 3px;
+  margin-bottom: 4px;
+}
+.drawer-name { font-size: 17px; font-weight: 700; color: white; }
+.drawer-sub  { font-size: 11px; color: var(--dim); margin-top: 2px; }
+
+.nav { padding: 14px 10px; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.nav-section {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--dim);
+  padding: 10px 8px 4px;
+  text-transform: uppercase;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all .18s;
+  font-size: 13.5px;
+  color: var(--dim);
+  border: 1px solid transparent;
+  position: relative;
+}
+.nav-item .icon { font-size: 15px; width: 20px; text-align: center; flex-shrink: 0; }
+.nav-item:hover { background: var(--surface2); color: var(--text); border-color: var(--border); }
+.nav-item.active {
+  background: rgba(0,195,255,.08);
+  color: var(--accent);
+  border-color: rgba(0,195,255,.25);
+  font-weight: 600;
+}
+.nav-item.active::before {
+  content:'';
+  position: absolute;
+  left: 0; top: 22%; bottom: 22%;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+.drawer-footer {
+  padding: 14px 18px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--dim);
+}
+.online-dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  margin-right: 6px;
+  animation: blink 2s infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ── CONTENT ── */
+.content { flex: 1; overflow-y: auto; padding: 24px; }
+.content::-webkit-scrollbar { width: 4px; }
+.content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.page { display: none; }
+.page.active { display: block; }
+
+/* ── CARDS ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px;
+  margin-bottom: 18px;
+}
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 18px;
+}
+
+/* ── FORM ── */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.form-group { display: flex; flex-direction: column; gap: 7px; }
+.form-group.full { grid-column: 1/-1; }
+label { font-size: 11px; font-weight: 600; color: var(--dim); letter-spacing: .5px; text-transform: uppercase; }
+input[type=text], select {
+  padding: 11px 13px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: white;
+  font-size: 14px;
+  font-family: 'Exo 2', sans-serif;
+  outline: none;
+  transition: border-color .2s;
+}
+input[type=text]:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,195,255,.07); }
+select { cursor: pointer; }
+select option { background: var(--surface2); }
+
+.btn {
+  padding: 11px 20px;
+  border: none;
+  border-radius: 8px;
+  font-family: 'Exo 2', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .18s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-primary { background: linear-gradient(135deg, var(--accent2), var(--accent)); color: white; }
+.btn-primary:hover { opacity:.85; transform: translateY(-1px); }
+.btn-success { background: rgba(0,230,118,.12); color: var(--green); border: 1px solid rgba(0,230,118,.28); }
+.btn-success:hover { background: rgba(0,230,118,.22); }
+.btn-danger  { background: rgba(255,61,90,.1);   color: var(--red);   border: 1px solid rgba(255,61,90,.22); }
+
+.play-btn {
+  padding: 8px 18px; border-radius: 8px;
+  border: 1px solid rgba(0,195,255,.3); background: rgba(0,195,255,.08);
+  color: var(--accent); font-family: 'Exo 2', sans-serif;
+  font-size: 13px; font-weight: 700; cursor: pointer; transition: all .18s;
+}
+.play-btn:hover { background: rgba(0,195,255,.18); }
+.play-btn.playing { color: var(--yellow); border-color: rgba(255,215,64,.3); background: rgba(255,215,64,.07); }
+
+.success-toast {
+  display: none; margin-top: 14px; padding: 11px 15px;
+  border-radius: 8px; background: rgba(0,230,118,.09);
+  border: 1px solid rgba(0,230,118,.28); color: var(--green); font-size: 13px;
+}
+
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;
+}
+.badge-green { background: rgba(0,230,118,.1); color: var(--green); border: 1px solid rgba(0,230,118,.22); }
+
+/* ── MACHINE GRID ── */
+.machine-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap: 12px; }
+.machine-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all .18s;
+  position: relative;
+  overflow: hidden;
+}
+.machine-card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:2px;
+  background: linear-gradient(90deg, var(--accent2), var(--accent));
+  opacity: 0; transition: opacity .2s;
+}
+.machine-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,195,255,.09); }
+.machine-card:hover::before, .machine-card.selected::before { opacity: 1; }
+.machine-card.selected { border-color: var(--accent); background: rgba(0,195,255,.05); }
+.machine-id { font-family: 'Share Tech Mono', monospace; font-size: 17px; color: white; margin-bottom: 5px; }
+.machine-status { font-size: 11px; color: var(--dim); }
+.machine-actions { margin-top: 20px; display: flex; align-items: center; gap: 10px; }
+.selected-info { font-size: 13px; color: var(--dim); flex: 1; }
+.selected-info span { color: var(--accent); font-weight: 600; font-family: 'Share Tech Mono', monospace; }
+
+/* ── DASHBOARD CONTROLS ── */
+.ctrl-row {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+}
+.ctrl-group {
+  display: flex; align-items: center; gap: 7px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 7px 12px;
+}
+.ctrl-group label { font-size: 10px; white-space: nowrap; }
+.ctrl-group select { padding: 4px 7px; font-size: 12px; border-radius: 6px; width: auto; }
+
+.ch-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.ch-btn {
+  padding: 5px 12px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--surface2);
+  color: var(--dim); font-family: 'Exo 2', sans-serif;
+  font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s;
+}
+.ch-btn:hover { border-color: var(--accent); color: var(--accent); }
+.ch-btn.active { background: rgba(0,195,255,.1); border-color: var(--accent); color: var(--accent); }
+
+.chart-wrap {
+  width: 100%; height: 440px;
+  background: #040810; border-radius: 10px;
+  border: 1px solid var(--border); padding: 8px;
+}
+.live-indicator {
+  display: inline-flex; align-items: center; gap: 12px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px; color: var(--green);
+}
+
+@media(max-width:600px) {
+  .form-grid { grid-template-columns: 1fr; }
+  .chart-wrap { height: 300px; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="hamburger" id="hamburger" onclick="toggleDrawer()">
+    <span></span><span></span><span></span>
+  </div>
+  <div style="flex:1;">
+    <div class="topbar-title">Live Track Inspection Portal</div>
+    <div class="topbar-sub" id="breadcrumb">Configuration</div>
+  </div>
+  <div class="topbar-right">
+    <span id="activeMachineLabel"></span>
+    <span id="clockEl"></span>
+  </div>
+</div>
+
+<div class="overlay" id="overlay" onclick="closeDrawer()"></div>
+
+<div class="drawer" id="drawer">
+  <div class="drawer-header">
+    <div class="drawer-tag">PORTAL</div>
+    <div class="drawer-name">Live Track Inspection Portal</div>
+    <div class="drawer-sub">Ultrasonic Flaw Detector</div>
+  </div>
+  <nav class="nav">
+    <div class="nav-section">Configuration</div>
+    <div class="nav-item active" data-page="config" onclick="navigate(this)">
+      <span class="icon">⚙️</span><span>Device &amp; Contact</span>
+    </div>
+    <div class="nav-section">Operations</div>
+    <div class="nav-item" data-page="machine" onclick="navigate(this)">
+      <span class="icon">🖥️</span><span>Machine Select</span>
+    </div>
+    <div class="nav-item" data-page="live" onclick="navigate(this)">
+      <span class="icon">📡</span><span>Live Dashboard</span>
+    </div>
+  </nav>
+  <div class="drawer-footer">
+    <span class="online-dot"></span>System Online
+  </div>
+</div>
+
+<div class="content">
+
+  <div class="page active" id="page-config">
+    <div class="card">
+      <div class="card-title">⚡ Device Status</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div style="font-size:11px;color:var(--dim);margin-bottom:4px;">Active Device</div>
+          <div style="font-size:20px;font-weight:700;font-family:'Share Tech Mono',monospace;" id="deviceLabelDisplay">UFD-0001</div>
+        </div>
+        <div class="badge badge-green"><span class="online-dot" style="width:6px;height:6px;margin-right:0;"></span> Online</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">📋 Device Settings</div>
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>Device ID</label>
+          <select id="deviceName">
+            <option value="0000">UFD-0001</option>
+            <option value="0001">UFD-0002</option>
+            <option value="0002">UFD-0003</option>
+            <option value="0003">UFD-0004</option>
+            <option value="0004">UFD-0005</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Phone Number 1</label>
+          <input type="text" id="phone1" placeholder="+91 70168 03398">
+        </div>
+        <div class="form-group">
+          <label>Phone Number 2</label>
+          <input type="text" id="phone2" placeholder="+91 90997 30846">
+        </div>
+      </div>
+      <div style="margin-top:18px;">
+        <button class="btn btn-primary" onclick="saveSettings()">💾 Save Configuration</button>
+      </div>
+      <div class="success-toast" id="successBox">✅ Configuration saved successfully!</div>
+    </div>
+  </div>
+
+  <div class="page" id="page-machine">
+    <div class="card">
+      <div class="card-title">🖥️ Select Machine</div>
+      <div style="font-size:13px;color:var(--dim);margin-bottom:16px;">
+        Click a machine to select it, then press <strong style="color:white;">Review</strong> to open its live dashboard.
+      </div>
+      <div class="machine-grid" id="machineGrid"></div>
+      <div class="machine-actions">
+        <div class="selected-info" id="selectedInfo">No machine selected</div>
+        <button class="btn btn-success" onclick="reviewMachine()" id="reviewBtn" disabled style="opacity:.4">🔍 Review</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="page" id="page-live">
+
+    <div class="card" style="padding:14px 18px;">
+      <div class="ctrl-row">
+        <div style="display:flex; gap: 12px; align-items:center;">
+            <div class="ctrl-group">
+              <label>Machine</label>
+              <select id="dashMachineSelect" onchange="onMachineChange()">
+                <option value="0000">UFD-0001</option>
+                <option value="0001">UFD-0002</option>
+                <option value="0002">UFD-0003</option>
+                <option value="0003">UFD-0004</option>
+                <option value="0004">UFD-0005</option>
+              </select>
+            </div>
+            <button class="play-btn" id="playBtn" onclick="togglePlay()">▶ Play</button>
+        </div>
+        
+        <div class="live-indicator">
+          <span id="pollingStatusIndicator" style="display:none;"><span class="online-dot"></span> LIVE POLLING ACTIVE</span>
+          <button class="ch-btn" id="mapToggleBtn" onclick="toggleMap()" style="border-color: var(--accent); color: var(--accent);">🗺️ Show Map</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:12px 18px;">
+      <div class="ch-row" id="channelBtns">
+        <button class="ch-btn active" data-ch="0" onclick="selectChannel(this)">ALL</button>
+        <button class="ch-btn" data-ch="1" onclick="selectChannel(this)">CH 1</button>
+        <button class="ch-btn" data-ch="2" onclick="selectChannel(this)">CH 2</button>
+        <button class="ch-btn" data-ch="3" onclick="selectChannel(this)">CH 3</button>
+        <button class="ch-btn" data-ch="4" onclick="selectChannel(this)">CH 4</button>
+        <button class="ch-btn" data-ch="5" onclick="selectChannel(this)">CH 5</button>
+        <button class="ch-btn" data-ch="6" onclick="selectChannel(this)">CH 6</button>
+        <button class="ch-btn" data-ch="7" onclick="selectChannel(this)">CH 7</button>
+        <button class="ch-btn" data-ch="8" onclick="selectChannel(this)">CH 8</button>
+        <button class="ch-btn" data-ch="9" onclick="selectChannel(this)">CH 9</button>
+      </div>
+    </div>
+
+    <div class="card" style="padding:12px;">
+      <div class="chart-wrap">
+        <canvas id="chart"></canvas>
+      </div>
+    </div>
+
+    <div class="card" id="mapCard" style="padding:12px; display:none;">
+      <div class="card-title" style="margin-bottom:12px;">📍 Live GPS Location Tracker</div>
+      <div id="map" style="width: 100%; height: 350px; border-radius: 8px; border: 1px solid var(--border); z-index: 1;"></div>
+    </div>
+
+  </div></div><script>
+/* ── CLOCK ── */
+function updateClock(){
+  document.getElementById('clockEl').textContent =
+    new Date().toLocaleTimeString('en-IN',{hour12:false});
+}
+setInterval(updateClock,1000); updateClock();
+
+/* ── DRAWER ── */
+function toggleDrawer(){
+  const open = document.getElementById('drawer').classList.toggle('open');
+  document.getElementById('overlay').classList.toggle('open', open);
+  document.getElementById('hamburger').classList.toggle('open', open);
+}
+
+function closeDrawer(){
+  // Fixed: Changed .remove() to .classList.remove() so elements aren't destroyed
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('overlay').classList.remove('open');
+  document.getElementById('hamburger').classList.remove('open');
+}
+
+/* ── NAVIGATION ── */
+const pageMeta = {
+  config:   'Configuration',
+  machine:  'Operations › Machine Select',
+  live:     'Operations › Live Dashboard'
+};
+function navigate(el){
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  el.classList.add('active');
+  const page = el.dataset.page;
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+page).classList.add('active');
+  document.getElementById('breadcrumb').textContent = pageMeta[page];
+  closeDrawer();
+  
+  if (page === 'live' && mapVisible && map) {
+      setTimeout(() => { map.invalidateSize(); }, 200);
+  }
+}
+
+/* ── CONFIG ── */
+const SAVE_API = "https://b8vai0jyt6.execute-api.ap-southeast-2.amazonaws.com/saveConfig";
+async function saveSettings(){
+  const payload = {
+    device: document.getElementById("deviceName").value,
+    phone1: document.getElementById("phone1").value,
+    phone2: document.getElementById("phone2").value
+  };
+  try {
+    const r = await fetch(SAVE_API,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(payload)
+    });
+    const txt = await r.text();
+    document.getElementById("successBox").style.display = "block";
+    setTimeout(() => { document.getElementById("successBox").style.display = "none"; }, 4000);
+  } catch(err) {
+    console.error(err);
+    alert("Error saving configurations");
+  }
+}
+
+/* ── MACHINE SELECT ── */
+const MACHINES = [
+  {id:"0000",name:"UFD-0001",status:"Online"},
+  {id:"0001",name:"UFD-0002",status:"Online"},
+  {id:"0002",name:"UFD-0003",status:"Idle"},
+  {id:"0003",name:"UFD-0004",status:"Online"},
+  {id:"0004",name:"UFD-0005",status:"Offline"},
+];
+let selectedMachineId = null;
+
+function buildMachineGrid(){
+  const grid = document.getElementById('machineGrid');
+  grid.innerHTML='';
+  MACHINES.forEach(m=>{
+    const col = m.status==='Online'?'var(--green)':m.status==='Idle'?'var(--yellow)':'var(--red)';
+    const c = document.createElement('div');
+    c.className='machine-card'; c.dataset.id=m.id;
+    c.innerHTML=`<div class="machine-id">${m.name}</div>
+      <div class="machine-status">
+        <span style="color:${col};font-size:8px;">●</span> ${m.status}
+        &nbsp;·&nbsp; ID: <span style="font-family:'Share Tech Mono',monospace;">${m.id}</span>
+      </div>`;
+    c.onclick=()=>selectMachine(m.id,m.name);
+    grid.appendChild(c);
+  });
+}
+function selectMachine(id,name){
+  selectedMachineId=id;
+  document.querySelectorAll('.machine-card').forEach(c=>c.classList.toggle('selected',c.dataset.id===id));
+  document.getElementById('selectedInfo').innerHTML=`Selected: <span>${name}</span>`;
+  const btn=document.getElementById('reviewBtn');
+  btn.disabled=false; btn.style.opacity='1';
+}
+function reviewMachine(){
+  if(!selectedMachineId) return;
+  document.getElementById('dashMachineSelect').value = selectedMachineId;
+  const m = MACHINES.find(x=>x.id===selectedMachineId);
+  const lbl = document.getElementById('activeMachineLabel');
+  lbl.textContent = '📡 '+(m?m.name:selectedMachineId);
+  lbl.style.display = 'inline';
+  navigate(document.querySelector('[data-page="live"]'));
+}
+buildMachineGrid();
+
+/* ── LIVE GPS MAP LOGIC ── */
+let map = null;
+let marker = null;
+let mapVisible = false;
+
+function toggleMap() {
+    mapVisible = !mapVisible;
+    const mapCard = document.getElementById('mapCard');
+    const btn = document.getElementById('mapToggleBtn');
+
+    if (mapVisible) {
+        mapCard.style.display = 'block';
+        btn.textContent = '🗺️ Hide Map';
+        btn.classList.add('active');
+        
+        if (!map) {
+            map = L.map('map').setView([22.3072, 73.1812], 15); 
+            
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+            }).addTo(map);
+            
+            marker = L.marker([22.3072, 73.1812]).addTo(map);
+        }
+        
+        setTimeout(() => { map.invalidateSize(); }, 100);
+    } else {
+        mapCard.style.display = 'none';
+        btn.textContent = '🗺️ Show Map';
+        btn.classList.remove('active');
+    }
+}
+
+/* ── LIVE DASHBOARD POLLING LOGIC ── */
+const DATA_API = "https://b8vai0jyt6.execute-api.ap-southeast-2.amazonaws.com/packet";
+
+let currentChannel = 0;
+let latestDataArray = [];
+let livePollingTimer = null;
+let isPlaying = false;
+
+const colors = ["#ff3d5a", "#00c3ff", "#00e676", "#ffd740", "#ff9800", "#e91e63", "#00b0ff", "#ffffff", "#ab47bc"];
+
+// Generate X-axis values 0 to 255 for fine-grained plotting
+const xLabels = Array.from({length: 256}, (_, i) => i);
+
+const chart = new Chart(document.getElementById('chart').getContext('2d'),{
+  type:'line',
+  data:{ 
+    labels: xLabels, 
+    datasets:[] 
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false, 
+    animation: { duration: 250 },
+    elements: { point: { radius: 0 } }, // Hide points to make RF signal clean
+    plugins:{ 
+        legend:{ labels:{ color:'#cce6ff', font:{family:"'Exo 2'"} } },
+        tooltip: { enabled: true }
+    },
+    scales:{
+      x:{ 
+        type: 'linear',
+        min: 0, 
+        max: 255, 
+        grid:{color:'#0d1f35'}, 
+        ticks:{
+          color:'#5a7a99',
+          callback: function(value) { return Math.round((value / 255) * 100) + '%'; }
+        } 
+      },
+      y:{ 
+        min: 0, 
+        max: 255, 
+        title:{display:true,text:'Amplitude (%)',color:'#5a7a99'}, 
+        grid:{color:'#0d1f35'}, 
+        ticks:{
+          color:'#5a7a99',
+          callback: function(value) { return Math.round((value / 255) * 100) + '%'; }
+        } 
+      }
+    }
+  }
+});
+
+function togglePlay() {
+    const btn = document.getElementById('playBtn');
+    const statusText = document.getElementById('pollingStatusIndicator');
+
+    if (!isPlaying) {
+        isPlaying = true;
+        btn.textContent = '⏸ Pause';
+        btn.classList.add('playing');
+        statusText.style.display = 'inline-flex';
+        
+        fetchLiveData();
+        livePollingTimer = setInterval(fetchLiveData, 2000);
+    } else {
+        isPlaying = false;
+        btn.textContent = '▶ Play';
+        btn.classList.remove('playing');
+        statusText.style.display = 'none';
+        
+        clearInterval(livePollingTimer);
+    }
+}
+
+async function fetchLiveData() {
+    if(!document.getElementById('page-live').classList.contains('active')) return;
+    
+    const deviceId = document.getElementById('dashMachineSelect').value || '0000';
+    
+    try {
+        const [dataRes, structRes] = await Promise.all([
+            fetch(`${DATA_API}?device=${deviceId}&type=data`),
+            fetch(`${DATA_API}?device=${deviceId}&type=struct`)
+        ]);
+
+        if(dataRes.ok) {
+            const text = await dataRes.text();
+            const arr = text.split(',').map(val => parseInt(val.trim()));
+            if(arr.length >= 18) {
+                latestDataArray = arr;
+                updateGraph();
+            }
+        }
+        
+        if(structRes.ok && mapVisible && map && marker) {
+            const structJSON = await structRes.json();
+            
+            if (structJSON.latitude && structJSON.longitude) {
+                const lat = parseFloat(structJSON.latitude);
+                const lon = parseFloat(structJSON.longitude);
+                
+                if (lat !== 0 && lon !== 0) {
+                    marker.setLatLng([lat, lon]);
+                    map.panTo([lat, lon]);
+                }
+            }
+        }
+    } catch(err) {
+        console.error("Live Data Fetch Error: ", err);
+    }
+}
+
+function updateGraph() {
+  if (latestDataArray.length < 18) return;
+
+  chart.data.datasets = [];
+
+  for (let ch = 1; ch <= 9; ch++) {
+    if (currentChannel !== 0 && currentChannel !== ch) continue;
+
+    const idxA = (ch - 1) * 2;
+    const idxB = idxA + 1;
+    
+    const centerPos = latestDataArray[idxA] || 0; 
+    const peakAmp = latestDataArray[idxB] || 0;   
+
+    // Mathematical generation of a high-resolution modulated Flaw Echo signal (Gaussian envelope with high-frequency sine component)
+    const datasetPoints = [];
+    
+    // Spread the echo envelope size based on a typical pulse duration width
+    const pulseWidth = 16; 
+
+    for (let x = 0; x <= 255; x++) {
+        let y = 0;
+        if (peakAmp > 0 && Math.abs(x - centerPos) < pulseWidth * 3) {
+            // Gaussian bell curve base
+            const envelope = Math.exp(-Math.pow(x - centerPos, 2) / (2 * Math.pow(pulseWidth, 2)));
+            // High-frequency sinusoidal oscillations inside the ultrasonic beam package
+            const sineWave = Math.abs(Math.sin((x - centerPos) * 0.6));
+            
+            y = peakAmp * envelope * sineWave;
+        }
+        datasetPoints.push({x: x, y: y});
+    }
+
+    chart.data.datasets.push({
+      label: `CH ${ch}`,
+      data: datasetPoints,
+      tension: 0.2, 
+      fill: true,
+      backgroundColor: colors[ch - 1] + '1A', 
+      borderColor: colors[ch - 1],
+      borderWidth: 2,
+    });
+  }
+
+  chart.update();
+}
+
+function onMachineChange(){
+  const sel = document.getElementById('dashMachineSelect');
+  const lbl = document.getElementById('activeMachineLabel');
+  lbl.textContent = '📡 '+sel.options[sel.selectedIndex].textContent;
+  lbl.style.display='inline';
+  
+  if(isPlaying) {
+      fetchLiveData(); 
+  }
+}
+
+function selectChannel(btn){
+  document.querySelectorAll('.ch-btn').forEach(b => {
+      b.classList.remove('active');
+      b.style.borderColor = '';
+      b.style.color = '';
+      b.style.backgroundColor = '';
+  });
+  
+  btn.classList.add('active');
+  currentChannel = parseInt(btn.dataset.ch);
+  
+  if (currentChannel > 0) {
+      const col = colors[currentChannel - 1];
+      btn.style.borderColor = col;
+      btn.style.color = col;
+      btn.style.backgroundColor = col + '15';
+  } else {
+      btn.style.borderColor = 'var(--accent)';
+      btn.style.color = 'var(--accent)';
+      btn.style.backgroundColor = 'rgba(0,195,255,.1)';
+  }
+
+  updateGraph();
+}
+</script>
+</body>
+</html>
